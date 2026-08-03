@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CryptoPulse Pro Terminal</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Sidebar navigation -->
+    <aside>
+        <div class="sidebar-header">
+            <div class="logo">⚡ CryptoPulse</div>
+            <button id="theme-toggle" class="btn-theme">🌙</button>
+        </div>
+        <ul class="nav-links">
+            <li><a href="#" class="active">Terminal Overview</a></li>
+            <li><a href="#">Asset Analytics</a></li>
+            <li><a href="#">Watchlists</a></li>
+        </ul>
+        <div class="macro-stats">
+            <div>Cap: <strong>{{ macro.total_cap }}</strong></div>
+            <div>24h Vol: <strong>{{ macro.volume }}</strong></div>
+            <div>Dominance: <strong>{{ macro.dominance }}</strong></div>
+        </div>
+    </aside>
+
+    <!-- Main dashboard content -->
+    <main>
+        {% if using_fallback %}
+        <div class="api-alert-banner">
+            <span class="alert-icon">⚠️</span>
+            <div class="alert-text">
+                <strong>CoinGecko API Unreachable / Rate-Limited</strong>
+                <p>The network connection timed out. Displaying high-fidelity system cached values until connection resets.</p>
+            </div>
+        </div>
+        {% endif %}
+
+        <header style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div>
+                <h1>Live Market Overview</h1>
+                <p>Real-time metrics rendered via Flask app pipeline.</p>
+            </div>
+            <div id="sync-indicator" class="sync-container">
+                <span id="sync-countdown-text" class="sync-text">Refreshing in 30s</span>
+                <div class="spinner"></div>
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            <div class="center-column">
+                <section class="cards-grid">
+                    {% for key, val in assets.items() %}
+                    <article class="card clickable-card" id="card-{{ key }}" onclick="switchChart('{{ key }}')">
+                        <div class="card-header">
+                            <span class="coin-name">{{ val.name }} ({{ key.upper() }})</span>
+                            <span class="badge {{ val.t }}">{{ val.c }}</span>
+                        </div>
+                        <div class="price-display">{{ val.p }}</div>
+                    </article>
+                    {% endfor %}
+                </section>
+
+                <section class="chart-container">
+                    <h3 id="chart-title">Bitcoin (BTC) Performance Index</h3>
+                    <div class="canvas-wrapper">
+                        <canvas id="marketChart"></canvas>
+                    </div>
+                </section>
+            </div>
+
+            <div class="right-column">
+                <section class="movers-box">
+                    <h3>Top Daily Gainers</h3>
+                    {% for coin in gainers %}
+                    <div class="mover-row"><span class="symbol">{{ coin.symbol }}</span> <span class="pos">{{ coin.change }}</span></div>
+                    {% endfor %}
+                    <h3 style="margin-top: 24px;">Top Daily Losers</h3>
+                    {% for coin in losers %}
+                    <div class="mover-row"><span class="symbol">{{ coin.symbol }}</span> <span class="neg">{{ coin.change }}</span></div>
+                    {% endfor %}
+                </section>
+
+                <section class="news-box">
+                    <h3>Market News Stream</h3>
+                    {% for item in news %}
+                    <div class="news-item">
+                        <h4>{{ item.title }}</h4>
+                        <p><span>{{ item.source }}</span> • {{ item.time }}</p>
+                    </div>
+                    {% endfor %}
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <!-- Dashboard scripting -->
+    <script>
+        const allSparklines = {{ sparklines | tojson }};
+        const coinNames = { btc: "Bitcoin (BTC)", eth: "Ethereum (ETH)", sol: "Solana (SOL)", xrp: "Ripple (XRP)" };
+
+        let activeChartInstance = null;
+
+        function renderChart(coinKey) {
+            const dataPoints = allSparklines[coinKey];
+            const labels = dataPoints.map((_, i) => dataPoints.length > 10 ? (i % 24 === 0 ? `Day ${Math.floor(i/24) + 1}` : '') : `Point ${i+1}`);
+
+            document.getElementById('chart-title').innerText = `${coinNames[coinKey]} Performance Index`;
+
+            document.querySelectorAll('.card').forEach(c => c.classList.remove('active-card'));
+            const targetedCard = document.getElementById(`card-${coinKey}`);
+            if (targetedCard) targetedCard.classList.add('active-card');
+
+            const ctx = document.getElementById('marketChart').getContext('2d');
+
+            if (activeChartInstance) {
+                activeChartInstance.destroy();
+            }
+
+            activeChartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: dataPoints,
+                        borderColor: '#58a6ff',
+                        backgroundColor: 'rgba(88, 166, 255, 0.03)',
+                        borderWidth: 2,
+                        fill: true,
+                        tension: 0.1,
+                        pointRadius: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: { grid: { display: false }, ticks: { color: '#8b949e', maxRotation: 0 } },
+                        y: { grid: { color: 'rgba(48, 54, 61, 0.3)' }, ticks: { color: '#8b949e' } }
+                    },
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        function switchChart(coinKey) {
+            renderChart(coinKey);
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            renderChart('btc');
+        });
+
+        let countdownSecondsRemaining = 30;
+        const countdownTextElement = document.getElementById('sync-countdown-text');
+        const spinnerElement = document.querySelector('.sync-container .spinner');
+
+        async function runBackgroundDataSync() {
+            try {
+                if (countdownTextElement) countdownTextElement.innerText = "Synchronizing...";
+                if (spinnerElement) spinnerElement.style.animationPlayState = 'running';
+
+                const response = await fetch('/api/refresh');
+                if (!response.ok) throw new Error("Network saturation delay.");
+                const freshData = await response.json();
+
+                for (const [key, val] of Object.entries(freshData.assets)) {
+                    const cardNode = document.getElementById(`card-${key}`);
+                    if (cardNode) {
+                        cardNode.querySelector('.price-display').innerText = val.p;
+                        const badge = cardNode.querySelector('.badge');
+                        badge.innerText = val.c;
+                        badge.className = `badge ${val.t}`;
+                    }
+                }
+
+                Object.assign(allSparklines, freshData.sparklines);
+                const activeCard = document.querySelector('.active-card');
+                if (activeCard) {
+                    const activeCoinKey = activeCard.id.replace('card-', '');
+                    renderChart(activeCoinKey);
+                }
+
+                console.log(">>> Live server values updated successfully.");
+            } catch (err) {
+                console.warn("API processing delay encountered: ", err);
+                if (countdownTextElement) countdownTextElement.innerText = "Connection Lagging...";
+            } finally {
+                countdownSecondsRemaining = 30;
+            }
+        }
+
+        function handleMasterClockTick() {
+            countdownSecondsRemaining--;
+
+            if (countdownSecondsRemaining <= 0) {
+                runBackgroundDataSync();
+            } else {
+                if (countdownTextElement) {
+                    countdownTextElement.innerText = `Refreshing in ${countdownSecondsRemaining}s`;
+                }
+                if (spinnerElement && countdownSecondsRemaining > 0) {
+                    spinnerElement.style.animationDuration = '2s';
+                }
+            }
+        }
+
+        setInterval(handleMasterClockTick, 1000);
+
+        const toggleBtn = document.getElementById('theme-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => {
+                const root = document.documentElement;
+                const next = (root.getAttribute('data-theme') || 'dark') === 'dark' ? 'light' : 'dark';
+                root.setAttribute('data-theme', next);
+                toggleBtn.innerText = next === 'dark' ? '🌙' : '☀️';
+            });
+        }
+    </script>
+</body>
+</html>
