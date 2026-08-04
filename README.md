@@ -3,7 +3,7 @@
 A high-fidelity, responsive cryptocurrency data visualization terminal and SaaS dashboard. This full-stack application connects directly to external financial APIs to stream live token tickers, aggregate macroeconomic indicators, and render interactive performance trend charts.
 
 ## 🚀 Live Demo
-Check out the production deployment here: **[Insert Your Render Web Service URL Here]**
+Check out the production deployment here: https://cryptopulse-terminal.onrender.com/
 
 ## ✨ Core Features
 *   📈 **Multi-Asset Interactive Charting:** Dynamically swap between real 7D hourly historical performance charts (Bitcoin, Ethereum, Solana, Ripple) by clicking asset cards.
